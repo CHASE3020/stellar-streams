@@ -99,14 +99,16 @@ The flagship contract locks tokens up front and releases them linearly.
 | :------------------------------------------------------------------- | :------------------------------------------------------------------------ |
 | `initialize(admin, treasury, fee_bps)`                               | Configure the optional protocol fee (cap 10%).                            |
 | `create_stream(sender, recipient, token, amount, start, end, cliff)` | Lock tokens and open a stream. Returns the stream id.                     |
+| `create_streams(sender, token, entries)`                             | Lock a whole batch atomically. Returns the new ids, in input order.       |
 | `withdraw(id)`                                                       | Recipient claims the vested, unclaimed balance.                           |
 | `cancel(id)`                                                         | Sender cancels; unvested funds are refunded, vested funds stay claimable. |
 | `claimable(id)` / `vested(id)`                                       | View helpers.                                                             |
 | `get_stream(id)` / `get_config()` / `next_stream_id()`               | Read helpers.                                                             |
 
 Safety properties enforced on-chain: `end > start`, `start ≤ cliff ≤ end`, `amount > 0`,
-authenticated sender/recipient, and idempotent cancel. See
-[`contracts/stream/src/lib.rs`](contracts/stream/src/lib.rs).
+authenticated sender/recipient, and idempotent cancel. `create_streams` applies every one of
+those checks to every entry before it moves a token, so a batch either fully lands or changes
+nothing. See [`contracts/stream/src/lib.rs`](contracts/stream/src/lib.rs).
 
 ### Vesting math
 
