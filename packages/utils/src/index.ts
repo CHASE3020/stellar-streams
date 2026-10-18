@@ -196,31 +196,17 @@ export interface VestingPoint {
 }
 
 /** Accepted stream input for vesting curve generation. Supports both shorthand and formal types. */
-export type VestingStreamInput =
-  | {
-      start: number;
-      cliff?: number;
-      end: number;
-      deposit: bigint | number | string;
-    }
-  | {
-      startTime: number;
-      cliffTime?: number;
-      endTime: number;
-      totalAmount: bigint | number | string;
-    }
-  | VestingSchedule
-  | {
-      start?: number;
-      startTime?: number;
-      cliff?: number;
-      cliffTime?: number;
-      end?: number;
-      endTime?: number;
-      deposit?: bigint | number | string;
-      totalAmount?: bigint | number | string;
-      amount?: bigint | number | string;
-    };
+export interface VestingStreamInput {
+  start?: number;
+  startTime?: number;
+  cliff?: number;
+  cliffTime?: number;
+  end?: number;
+  endTime?: number;
+  deposit?: bigint | number | string;
+  totalAmount?: bigint | number | string;
+  amount?: bigint | number | string;
+}
 
 /**
  * Generates N sample points along a stream's vesting schedule suitable for charting.
@@ -231,10 +217,7 @@ export type VestingStreamInput =
  * - Vested amounts are monotonically non-decreasing and never exceed the total deposit.
  * - Pure and deterministic: identical inputs always produce the exact same points.
  */
-export function vestingCurve(
-  stream: VestingStreamInput,
-  samples: number = 20,
-): VestingPoint[] {
+export function vestingCurve(stream: VestingStreamInput, samples: number = 20): VestingPoint[] {
   const start = stream.start ?? stream.startTime ?? 0;
   const rawEnd = stream.end ?? stream.endTime ?? start;
   const end = Math.max(start, rawEnd);

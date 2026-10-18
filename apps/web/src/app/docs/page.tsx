@@ -284,13 +284,14 @@ soroban contract deploy \\
       <div>
         <h1 className="mb-6 text-3xl font-extrabold text-white">Migration Guide</h1>
         <p className="text-slate-350 mb-6 leading-relaxed">
-          Migrating existing integrations from <code className="text-cyan-300">@stellar-starter-kit/*</code> to{' '}
+          Migrating existing integrations from{' '}
+          <code className="text-cyan-300">@stellar-starter-kit/*</code> to{' '}
           <code className="text-purple-300">@stellar-streams/*</code>.
         </p>
 
         <div className="glass mb-8 rounded-2xl border border-slate-900 p-6">
           <h3 className="mb-3 text-base font-bold text-white">Package Renaming Table</h3>
-          <p className="text-slate-400 mb-4 text-sm leading-relaxed">
+          <p className="mb-4 text-sm leading-relaxed text-slate-400">
             All workspace packages have moved from the starter template scope to the dedicated
             Stellar Streams protocol scope.
           </p>
@@ -342,7 +343,7 @@ soroban contract deploy \\
   -exec sed -i 's/@stellar-starter-kit\\//@stellar-streams\\//g' {} +`}
         </pre>
 
-        <p className="text-slate-400 text-sm">
+        <p className="text-sm text-slate-400">
           For full import mappings, behaviour changes, and codemod scripts, refer to the complete{' '}
           <a
             href="https://github.com/SorobanForge/stellar-streams/blob/main/docs/migration.md"

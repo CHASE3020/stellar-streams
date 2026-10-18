@@ -292,4 +292,3 @@ describe('vestingCurve', () => {
     expect(single).toEqual([{ t: 500, vested: 1_000n }]);
   });
 });
-

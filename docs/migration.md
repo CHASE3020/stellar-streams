@@ -8,18 +8,18 @@ This guide explains how to migrate projects and integrations built on `@stellar-
 
 The `@stellar-starter-kit/*` scope was established when the project originated as a general-purpose starter template. As the protocol evolved into **Stellar Streams** (a dedicated payments streaming, vesting, and splits system on Stellar & Soroban), all packages were rebranded under `@stellar-streams/*`.
 
-| Old Package Name (`@stellar-starter-kit/*`) | New Package Name (`@stellar-streams/*`) | Purpose & Key Contents |
-| :------------------------------------------ | :-------------------------------------- | :--------------------- |
-| `@stellar-starter-kit/sdk`                  | `@stellar-streams/sdk`                  | `StreamsClient`, RPC simulation, wallet transaction submission, `StreamsError`, `TokenMetadata` |
-| `@stellar-starter-kit/types`                | `@stellar-streams/types`                | Domain interfaces: `Stream`, `StreamConfig`, `CreateStreamParams`, `Split`, `getStreamStatus` |
-| `@stellar-starter-kit/utils`                | `@stellar-streams/utils`                | Vesting math (`computeVestedAmount`, `vestingCurve`), token & stroop precision helpers |
+| Old Package Name (`@stellar-starter-kit/*`) | New Package Name (`@stellar-streams/*`) | Purpose & Key Contents                                                                                   |
+| :------------------------------------------ | :-------------------------------------- | :------------------------------------------------------------------------------------------------------- |
+| `@stellar-starter-kit/sdk`                  | `@stellar-streams/sdk`                  | `StreamsClient`, RPC simulation, wallet transaction submission, `StreamsError`, `TokenMetadata`          |
+| `@stellar-starter-kit/types`                | `@stellar-streams/types`                | Domain interfaces: `Stream`, `StreamConfig`, `CreateStreamParams`, `Split`, `getStreamStatus`            |
+| `@stellar-starter-kit/utils`                | `@stellar-streams/utils`                | Vesting math (`computeVestedAmount`, `vestingCurve`), token & stroop precision helpers                   |
 | `@stellar-starter-kit/contracts`            | `@stellar-streams/contracts`            | Generated Soroban TS client bindings: `StreamClient`, `SplitsClient`, `EscrowClient`, `SOROBAN_NETWORKS` |
-| `@stellar-starter-kit/hooks`                | `@stellar-streams/hooks`                | React hooks: `useStream`, `useStellarNetworkStatus` |
-| `@stellar-starter-kit/wallets`              | `@stellar-streams/wallets`              | Wallet connectors & context provider (`Freighter`, `Albedo`, `Rabet`, `Hana`) |
-| `@stellar-starter-kit/ui`                   | `@stellar-streams/ui`                   | Shared design tokens, primitives, `cn` utility |
-| `@stellar-starter-kit/tsconfig`             | `@stellar-streams/tsconfig`             | Shared TypeScript compiler configurations |
-| `@stellar-starter-kit/eslint-config`        | `@stellar-streams/eslint-config`        | Shared ESLint rulesets |
-| `@stellar-starter-kit/web`                  | `@stellar-streams/web`                  | Next.js dashboard application |
+| `@stellar-starter-kit/hooks`                | `@stellar-streams/hooks`                | React hooks: `useStream`, `useStellarNetworkStatus`                                                      |
+| `@stellar-starter-kit/wallets`              | `@stellar-streams/wallets`              | Wallet connectors & context provider (`Freighter`, `Albedo`, `Rabet`, `Hana`)                            |
+| `@stellar-starter-kit/ui`                   | `@stellar-streams/ui`                   | Shared design tokens, primitives, `cn` utility                                                           |
+| `@stellar-starter-kit/tsconfig`             | `@stellar-streams/tsconfig`             | Shared TypeScript compiler configurations                                                                |
+| `@stellar-starter-kit/eslint-config`        | `@stellar-streams/eslint-config`        | Shared ESLint rulesets                                                                                   |
+| `@stellar-starter-kit/web`                  | `@stellar-streams/web`                  | Next.js dashboard application                                                                            |
 
 ---
 
@@ -183,6 +183,7 @@ import { cn, UI_LIBRARY_VERSION } from '@stellar-streams/ui';
 ### Configuration Packages
 
 In `tsconfig.json`:
+
 ```json
 {
   "extends": "@stellar-streams/tsconfig/base.json"
@@ -190,6 +191,7 @@ In `tsconfig.json`:
 ```
 
 In `eslint.config.js`:
+
 ```javascript
 const sharedConfig = require('@stellar-streams/eslint-config');
 module.exports = [...sharedConfig];
@@ -209,7 +211,8 @@ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.mjs"
   -exec sed -i 's/@stellar-starter-kit\//@stellar-streams\//g' {} +
 ```
 
-*For macOS (BSD `sed`), use:*
+_For macOS (BSD `sed`), use:_
+
 ```bash
 find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.mjs" -o -name "*.json" \) \
   -not -path "*/node_modules/*" -not -path "*/.git/*" -not -path "*/dist/*" \
@@ -257,6 +260,7 @@ console.log('Migration codemod completed!');
 In addition to package renaming, notable architectural and API enhancements have been introduced that integrators should be aware of:
 
 ### 1. Shift from Starter-Kit Template to Protocol Core
+
 - **Old behaviour**: The starter kit included a simple `counter` demo contract, basic Horizon API queries, and generic templates.
 - **New behaviour**: Stellar Streams is an production-focused protocol. The `counter` contract is removed. The protocol contracts are:
   - `stream`: Linear token vesting with optional cliff, protocol fee, cancel with unvested refund, and TTL management.
@@ -264,10 +268,12 @@ In addition to package renaming, notable architectural and API enhancements have
   - `escrow`: Arbiter-mediated multi-party lockup and deadline refunds.
 
 ### 2. BigInt Precision Arithmetic
+
 - **Old behaviour**: Early utilities used JavaScript standard `number` types, which caused IEEE-754 precision issues for large 7-decimal or 18-decimal token amounts.
 - **New behaviour**: All monetary values and mathematical helpers (`formatTokenAmount`, `parseTokenAmount`, `formatStroopsToXlm`, `parseXlmToStroops`, `computeVestedAmount`, `vestingCurve`) exclusively operate with `bigint`.
 
 ### 3. Dynamic Decimals & Multi-Token Support
+
 - **Old behaviour**: Fixed 7-decimal stroop assumptions across all operations.
 - **New behaviour**: The protocol supports arbitrary SEP-41 token contracts (`C...`), including native XLM, issued asset SACs, and custom Soroban tokens.
   - Query decimals via `client.getTokenMetadata(tokenAddress)` (cached).
@@ -275,10 +281,12 @@ In addition to package renaming, notable architectural and API enhancements have
   - For classic Stellar assets, derive their SAC address using `assetContractId("USDC:GA...", networkPassphrase)`.
 
 ### 4. Client Pre-flight Simulation & Error Handling
+
 - **Old behaviour**: Transactions were signed by the wallet and failed only upon ledger submission.
 - **New behaviour**: `StreamsClient` simulates transactions against Soroban RPC before requesting wallet signatures. Invalid operations (such as non-positive amounts, invalid cliff ranges, or unauthorized withdrawals) fail immediately with typed `StreamsError` and stable `StreamErrorCode` values, sparing users from signing failing transactions.
 
 ### 5. Vesting Chart Curve Generation
+
 - **Old behaviour**: Only point-in-time vested amounts were computed (`computeVestedAmount`).
 - **New behaviour**: Added `vestingCurve(stream, samples)` in `@stellar-streams/utils`, generating sample points `{ t, vested }[]` spanning the stream duration, guaranteeing exact inclusion of `start`, `cliff`, and `end` timestamps with strict monotonic non-decreasing guarantees.
 
