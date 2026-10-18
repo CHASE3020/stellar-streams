@@ -63,7 +63,7 @@ stellar/
 ├── apps/
 │   └── web/                  # Next.js dashboard (/streams, /escrow, /docs)
 ├── scripts/                  # cross-platform build/deploy/invoke scripts
-└── docs/                     # development guide + contract reference
+└── docs/                     # development guide + contract reference + migration guide
 ```
 
 ---
@@ -145,6 +145,9 @@ Every entry point with its argument and return types, every error variant with i
 the condition that raises it, and every event topic with its payload shape, for all three contracts:
 **[docs/contracts.md](docs/contracts.md)**.
 
+For upgrading existing projects and mapping package imports, see the **[Migration Guide](docs/migration.md)**.
+For the complete list of technical documentation, see the **[Documentation Index](docs/README.md)**.
+
 The sections above are orientation. That page is what an integrator mapping a failure to a
 user-facing message, or an indexer decoding an event, should actually be reading — including the
 cases the Rust does not advertise: two error codes that are defined but never returned, and an
@@ -203,6 +206,8 @@ in the development guide (verified on Linux).
 ---
 
 ## SDK usage
+
+> **Migrating from `@stellar-starter-kit/*`?** See the **[Migration Guide](docs/migration.md)** for a complete import mapping table and codemod snippets.
 
 ```typescript
 import { StreamsClient } from '@stellar-starter-kit/sdk';
