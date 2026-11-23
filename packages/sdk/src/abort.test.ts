@@ -94,4 +94,37 @@ describe('cancelling writes with an AbortSignal', () => {
     expect(error.message).toBe('dashboard unmounted');
     expect(rpc.calls()).toBe(0);
   });
+
+  it('aborted write makes no further transport calls after abort', async () => {
+    vi.useFakeTimers();
+    const rpc = writableTransport();
+    rpc.getTransaction.mockResolvedValue(txResponse(GetTransactionStatus.NOT_FOUND));
+    const controller = new AbortController();
+
+    const signTransaction = vi.fn(async (txXdr: string) => txXdr);
+
+    const settled = makeClient({
+      transport: rpc,
+      signTransaction,
+      pollIntervalMs: 1_000,
+      pollTimeoutMs: 60_000,
+    })
+      .withdraw(1, { signal: controller.signal })
+      .catch((e: unknown) => e);
+
+    // Let the write reach the poll's wait between two confirmations.
+    await vi.advanceTimersByTimeAsync(100);
+    expect(rpc.sendTransaction).toHaveBeenCalledTimes(1);
+
+    controller.abort();
+    const error = (await settled) as Error;
+
+    expect(error.name).toBe('AbortError');
+    expect(error.message).toBe('This operation was aborted');
+    // No further transport calls after the abort.
+    const callsBeforeAbort = rpc.calls();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(rpc.calls()).toBe(callsBeforeAbort);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

@@ -48,6 +48,13 @@ export interface WriteOptions {
   /** Aborts the wallet prompt, the submission, and the confirmation poll for this call. */
   signal?: AbortSignal;
   /**
+   * Notified as the write moves through `simulating`, `signing`, `submitting`,
+   * `polling`, `confirmed` and `failed`. A failing step reports `failed` once
+   * with the error; per-call overrides take precedence over the client-level
+   * hook.
+   */
+  onStatusChange?: (status: WriteStatus, error?: Error) => void;
+  /**
    * Base fee for the transaction in stroops, as a decimal integer string.
    * Overrides the client's default write fee. Resource fees discovered by the
    * simulation are still added on top by Soroban assembly.
@@ -62,6 +69,10 @@ export interface WriteOptions {
    */
   simulateOnly?: boolean;
 }
+
+/** Status reported by a write status change hook at each pipeline step. */
+export type WriteStatus =
+  'simulating' | 'signing' | 'submitting' | 'polling' | 'confirmed' | 'failed';
 
 /**
  * A stream's vested and claimable amounts read together, mirroring the
@@ -194,11 +205,27 @@ export interface StreamsClientOptions {
   /** How long to wait for a submitted transaction to confirm. Defaults to 30s. */
   pollTimeoutMs?: number;
   /**
+   * How many times a read call (simulation, account fetch, token metadata) is
+   * retried after a transport failure before giving up. Defaults to 3.
+   * Contract errors and aborts are never retried.
+   */
+  readRetries?: number;
+  /**
+   * Base delay in ms for the exponential backoff applied to read retries.
+   * Defaults to 500ms; each attempt doubles the delay, capped at 8s.
+   */
+  readBaseDelayMs?: number;
+  /**
    * Called after a transport-level failure rotates the client to another RPC
    * host. The rotation is also logged with `console.warn`; use this hook for
    * structured telemetry.
    */
   onRpcFailover?: (event: RpcFailoverEvent) => void;
+  /**
+   * Default status-change hook for every write made with this client. A
+   * per-call `onStatusChange` in `WriteOptions` takes precedence over it.
+   */
+  onStatusChange?: (status: WriteStatus, error?: Error) => void;
   /**
    * Sponsor the submission fees of every write with a fee-bump transaction.
    * The connected wallet still signs the inner transaction, so the contract
@@ -499,6 +526,10 @@ const DEFAULT_POLL_TIMEOUT_MS = 30_000;
 const DEFAULT_WRITE_FEE = '1000000';
 /** Upper bound for the exponential backoff applied to `TRY_AGAIN_LATER`. */
 const MAX_BACKOFF_MS = 8_000;
+/** Default number of read retry attempts after a transport failure. */
+const DEFAULT_READ_RETRIES = 3;
+/** Default base delay in ms for read retry exponential backoff. */
+const DEFAULT_READ_BASE_DELAY_MS = 500;
 /** Must match `MAX_LABEL_LEN` in the stream contract. */
 const MAX_LABEL_BYTES = 64;
 /** Must match `MAX_REFERENCE_LEN` in the stream contract. */
@@ -1023,6 +1054,29 @@ abstract class SorobanClient {
     return (await this.simulate('version')) as number;
   }
 
+  /**
+   * Runs a read transport call with bounded exponential backoff. Only transport
+   * failures (5xx, timeouts, connection resets) are retried; contract errors
+   * and aborts are rethrown immediately. Each attempt doubles the delay, capped
+   * at {@link MAX_BACKOFF_MS}.
+   */
+  private async readWithRetry<T>(call: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+    let delay = this.readBaseDelayMs;
+    let lastError: unknown;
+    for (let attempt = 0; attempt <= this.readRetries; attempt++) {
+      throwIfAborted(signal);
+      try {
+        return await call();
+      } catch (error) {
+        lastError = error;
+        if (attempt === this.readRetries || !isTransportFailure(error)) throw error;
+        await sleep(delay, signal);
+        delay = Math.min(delay * 2, MAX_BACKOFF_MS);
+      }
+    }
+    throw lastError;
+  }
+
   /** Simulates a read-only call on the client's contract and returns the decoded result. */
   protected simulate(method: string, ...args: xdr.ScVal[]): Promise<unknown> {
     return this.simulateOn(this.contract, method, ...args);
@@ -1043,7 +1097,10 @@ abstract class SorobanClient {
       .setTimeout(30)
       .build();
 
-    const response = await this.transport.simulateTransaction(tx);
+    const response = await this.readWithRetry(
+      () => this.transport.simulateTransaction(tx),
+      undefined,
+    );
     if (SorobanRpc.Api.isSimulationError(response)) {
       throw this.simulationFailure(method, response.error);
     }
@@ -1070,6 +1127,7 @@ abstract class SorobanClient {
     const signal = opts.signal ?? this.options.signal;
     const fee = opts.fee === undefined ? DEFAULT_WRITE_FEE : validateFee(opts.fee);
     const memo = opts.memo === undefined ? undefined : toMemo(opts.memo);
+    const onStatus = opts.onStatusChange ?? this.options.onStatusChange;
 
     // A cached sequence can go stale if the account transacted elsewhere; in
     // that case re-fetch it once and rebuild instead of failing the call.
@@ -1092,10 +1150,13 @@ abstract class SorobanClient {
       // always simulates, because that simulation *is* the result.
       let simulated: SorobanRpc.Api.SimulateTransactionResponse | undefined;
       if (opts.simulateOnly || !this.options.skipSimulation) {
+        onStatus?.('simulating');
         simulated = await this.transport.simulateTransaction(tx);
         throwIfAborted(signal);
         if (SorobanRpc.Api.isSimulationError(simulated)) {
-          throw this.simulationFailure(method, simulated.error);
+          const error = this.simulationFailure(method, simulated.error);
+          onStatus?.('failed', error);
+          throw error;
         }
       }
 
@@ -1110,6 +1171,7 @@ abstract class SorobanClient {
       const prepared = await this.transport.prepareTransaction(tx);
       // Never open a wallet prompt for a call the caller already cancelled.
       throwIfAborted(signal);
+      onStatus?.('signing');
       const signedXdr = await signTransaction!(prepared.toXDR(), {
         networkPassphrase,
         address: publicKey,
@@ -1120,16 +1182,21 @@ abstract class SorobanClient {
 
       let hash: string;
       try {
+        onStatus?.('submitting');
         hash = await this.submit(this.options.feeBump ? await this.bumpFees(inner) : inner, signal);
       } catch (error) {
         this.invalidateAccount();
         if (error instanceof StaleSequenceError && attempt === 0) continue;
+        onStatus?.('failed', error as Error);
         throw error;
       }
       // Invalidation point: once the network has accepted the transaction its
       // sequence number is consumed (whether it later succeeds or fails).
       this.invalidateAccount();
-      return this.poll(hash, signal) as unknown as WriteResultFor<O>;
+      onStatus?.('polling');
+      const result = this.poll(hash, signal) as unknown as WriteResultFor<O>;
+      onStatus?.('confirmed');
+      return result;
     }
   }
 
@@ -1203,6 +1270,14 @@ abstract class SorobanClient {
 
   private get pollTimeoutMs(): number {
     return this.options.pollTimeoutMs ?? DEFAULT_POLL_TIMEOUT_MS;
+  }
+
+  private get readRetries(): number {
+    return this.options.readRetries ?? DEFAULT_READ_RETRIES;
+  }
+
+  private get readBaseDelayMs(): number {
+    return this.options.readBaseDelayMs ?? DEFAULT_READ_BASE_DELAY_MS;
   }
 
   /**
