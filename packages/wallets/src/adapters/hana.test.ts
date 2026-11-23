@@ -1,9 +1,47 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { HanaAdapter } from './hana';
+import { runAdapterConformanceSuite } from './conformance.test';
 
 const originalWindow = globalThis.window;
 
-describe('HanaAdapter', () => {
+runAdapterConformanceSuite(() => {
+  const adapter = new HanaAdapter();
+  return {
+    name: 'HanaAdapter',
+    adapter,
+    setupAvailable: () => {
+      (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
+        send: vi.fn().mockResolvedValue({ publicKey: 'GB_HANA' }),
+      };
+    },
+    setupUnavailable: () => {
+      delete (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet;
+    },
+    setupConnectSuccess: () => {
+      (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
+        send: vi.fn().mockResolvedValue({ publicKey: 'GB_HANA' }),
+      };
+    },
+    setupConnectRejection: () => {
+      (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
+        send: vi.fn().mockRejectedValue(new Error('User rejected')),
+      };
+    },
+    setupSignSuccess: () => {
+      (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
+        send: vi.fn().mockResolvedValue({ signedTransaction: 'signed-hana-xdr' }),
+      };
+    },
+    setupSignRejection: () => {
+      (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
+        send: vi.fn().mockRejectedValue(new Error('Signing rejected')),
+      };
+    },
+    supportsDisconnect: false,
+  };
+});
+
+describe('HanaAdapter Specifics', () => {
   const adapter = new HanaAdapter();
 
   beforeEach(() => {
@@ -20,38 +58,12 @@ describe('HanaAdapter', () => {
     expect(adapter.name).toBe('Hana');
   });
 
-  it('isAvailable true when window.hanaWallet is defined', async () => {
-    (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
-      send: vi.fn(),
-    };
-    expect(await adapter.isAvailable()).toBe(true);
-  });
-
-  it('isAvailable false when window.hanaWallet is undefined', async () => {
-    delete (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet;
-    expect(await adapter.isAvailable()).toBe(false);
-  });
-
-  it('connect retrieves publicKey from object result', async () => {
-    (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
-      send: vi.fn().mockResolvedValue({ publicKey: 'GB_HANA' }),
-    };
-    const key = await adapter.connect();
-    expect(key).toBe('GB_HANA');
-    expect(adapter.getPublicKey()).resolves.toBe('GB_HANA');
-  });
-
   it('connect handles string publicKey result', async () => {
     (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet = {
       send: vi.fn().mockResolvedValue('GB_HANA_STRING'),
     };
     const key = await adapter.connect();
     expect(key).toBe('GB_HANA_STRING');
-  });
-
-  it('connect throws when hana missing', async () => {
-    delete (globalThis.window as Window & { hanaWallet?: unknown }).hanaWallet;
-    await expect(adapter.connect()).rejects.toThrow('Hana wallet extension is not installed.');
   });
 
   it('signTransaction delegates to hana send', async () => {

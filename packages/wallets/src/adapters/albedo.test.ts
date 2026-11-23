@@ -10,8 +10,54 @@ vi.mock('@albedo-link/intent', () => ({
 import albedo from '@albedo-link/intent';
 import { AlbedoAdapter } from './albedo';
 import type { WalletAdapter } from './adapter';
+import { runAdapterConformanceSuite } from './conformance.test';
 
-describe('AlbedoAdapter', () => {
+runAdapterConformanceSuite(() => {
+  const adapter = new AlbedoAdapter();
+  return {
+    name: 'AlbedoAdapter',
+    adapter,
+    setupAvailable: () => {
+      vi.mocked(albedo.publicKey).mockResolvedValue({
+        pubkey: 'GB_ALBEDO',
+        signature: '',
+        signed_message: '',
+      } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
+    },
+    setupUnavailable: () => {
+      vi.mocked(albedo.publicKey).mockRejectedValue(new Error('Unavailable'));
+    },
+    setupConnectSuccess: () => {
+      vi.mocked(albedo.publicKey).mockResolvedValue({
+        pubkey: 'GB_ALBEDO',
+        signature: '',
+        signed_message: '',
+      } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
+    },
+    setupConnectRejection: () => {
+      vi.mocked(albedo.publicKey).mockResolvedValue({
+        pubkey: '',
+        signature: '',
+        signed_message: '',
+      } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
+    },
+    setupSignSuccess: () => {
+      vi.mocked(albedo.tx).mockResolvedValue({
+        signed_envelope_xdr: 'signed-albedo-xdr',
+        tx_hash: 'hash',
+        xdr: 'xdr',
+        network: 'testnet',
+        result: 'ok',
+      } as unknown as Awaited<ReturnType<typeof albedo.tx>>);
+    },
+    setupSignRejection: () => {
+      vi.mocked(albedo.tx).mockRejectedValue(new Error('Rejected'));
+    },
+    supportsDisconnect: false,
+  };
+});
+
+describe('AlbedoAdapter Specifics', () => {
   const adapter = new AlbedoAdapter();
 
   beforeEach(() => {
@@ -23,49 +69,7 @@ describe('AlbedoAdapter', () => {
     expect(adapter.name).toBe('Albedo');
   });
 
-  it('isAvailable true when publicKey is a function', async () => {
-    vi.mocked(albedo.publicKey).mockResolvedValue({
-      pubkey: 'GB_ALBEDO',
-      signature: '',
-      signed_message: '',
-    } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
-    expect(await adapter.isAvailable()).toBe(true);
-  });
-
-  it('connect retrieves pubkey', async () => {
-    vi.mocked(albedo.publicKey).mockResolvedValue({
-      pubkey: 'GB_ALBEDO',
-      signature: '',
-      signed_message: '',
-    } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
-    const key = await adapter.connect();
-    expect(key).toBe('GB_ALBEDO');
-    expect(adapter.getPublicKey()).resolves.toBe('GB_ALBEDO');
-  });
-
-  it('connect throws when no pubkey', async () => {
-    vi.mocked(albedo.publicKey).mockResolvedValue({
-      pubkey: '',
-      signature: '',
-      signed_message: '',
-    } as unknown as Awaited<ReturnType<typeof albedo.publicKey>>);
-    await expect(adapter.connect()).rejects.toThrow('Failed to retrieve public key from wallet.');
-  });
-
   it('does not expose auth-entry signing', () => {
     expect((adapter as WalletAdapter).signAuthEntry).toBeUndefined();
-  });
-
-  it('signTransaction delegates to albedo tx', async () => {
-    vi.mocked(albedo.tx).mockResolvedValue({
-      signed_envelope_xdr: 'signed-albedo-xdr',
-      tx_hash: 'hash',
-      xdr: 'xdr',
-      network: 'testnet',
-      result: 'ok',
-    } as unknown as Awaited<ReturnType<typeof albedo.tx>>);
-    const signed = await adapter.signTransaction('xdr', { network: 'MAINNET' });
-    expect(signed).toBe('signed-albedo-xdr');
-    expect(albedo.tx).toHaveBeenCalledWith({ xdr: 'xdr', network: 'mainnet' });
   });
 });
